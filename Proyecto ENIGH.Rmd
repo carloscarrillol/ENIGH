@@ -1,0 +1,384 @@
+---
+title: "POBREZA"
+output:
+  html_notebook: default
+---
+Descargamos los datos, la mayoría están cargadas en GitHub:
+```{r}
+library(downloader)
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(ggplot2)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/agro.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+agro<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/agroconsumo.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+agro_consumo<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/agrogasto.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+agro_gasto<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/agroproductos.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+agro_prod<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/erogaciones.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+eroga<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/gastotarjetas.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+gastos_tarj<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/ingresos_jcf.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+ingresos_jcf<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/noagro.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+no_agro<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/noagroimportes.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+no_agro_importes<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/trabajos.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+trabajos<-read.csv(name)
+
+url<-"https://raw.githubusercontent.com/carloscarrillol/ENIGH/main/viviendas.csv"
+name<-basename(url)
+if(!file.exists(name))download(url,name)
+viviendas<-read.csv(name)
+
+#Los añadí desde mi computadora porque están demasiado pesados para subirlos a Git
+gastos_per<-read.csv("gastospersona.csv")
+con_hogar<-read.csv("concentradohogar.csv")
+hogares<-read.csv("hogares.csv")
+ingresos<-read.csv("ingresos.csv")
+poblacion<-read.csv("poblacion.csv")
+gastos_hogar<-read.csv("gastoshogar.csv")
+```
+
+Para el primer indicador de pobreza vamos a identificar de manera genérica, para la población rural, de manera siguiente:
+$$\textit{Indice de Pobreza por ingreso}_{i}=\frac{\textit{Valor del ingreso}_{i}+\textit{Valor del apoyo}_{ji}}{\textit{Valor del consumo}_{i}+\textit{Valor de los gastos}_{i}}$$
+**AGRO**
+
+Gasto y Consumo:
+```{r}
+indice<-select(agro_consumo,folioviv)
+indice_Agro_Gasto<-semi_join(agro_gasto,indice,by="folioviv")
+```
+
+```{r}
+Indice_Agro_Gasto_Agregado <- aggregate(gasto ~ folioviv, data = indice_Agro_Gasto, sum)
+```
+
+```{r}
+indice_Agro_Consumo<-semi_join(agro_consumo,indice,by="folioviv")
+Indice_Agro_Consumo_Agregado <- aggregate(valestim ~ folioviv, data = indice_Agro_Consumo, sum)
+Indice_Agro_Pas<-merge(Indice_Agro_Consumo_Agregado,Indice_Agro_Gasto_Agregado, by="folioviv",all=T)
+Indice_Agro_Pas$gasto<-ifelse(is.na(Indice_Agro_Pas$gasto),0,Indice_Agro_Pas$gasto)
+```
+
+```{r}
+#--------------
+Gasto_Hog<-semi_join(gastos_hogar, indice, by="folioviv")
+Gasto_Hog$gasto_tri<-ifelse(is.na(Gasto_Hog$gasto_tri),0,Gasto_Hog$gasto_tri)
+Gasto_Hog<-aggregate(gasto_tri ~ folioviv, data = Gasto_Hog, sum)
+Gasto_Hog$gasto_tri<-Gasto_Hog$gasto_tri/3
+Indice_Agro_Pas<-merge(Gasto_Hog, Indice_Agro_Pas, by="folioviv", all=T)
+#--------------
+n<-nrow(Indice_Agro_Pas)
+suma<-matrix(rep(0,n),ncol=1)
+for(i in 1:n){
+  suma[i]=Indice_Agro_Pas$valestim[i]+Indice_Agro_Pas$gasto[i]+Indice_Agro_Pas$gasto_tri[i]
+  suma
+}
+Indice_Agro_Pas<-data.frame(Indice_Agro_Pas,suma)
+```
+
+Ingresos:
+
+```{r}
+Indice_Agro_Prod<-semi_join(agro_prod,indice, by="folioviv")
+Indice_Agro_Prod_Agregado<-aggregate(valor ~ folioviv, data = Indice_Agro_Prod, sum)
+Indice_Agro<-semi_join(agro,indice,by="folioviv")
+Indice_Agro_Apoyo<-filter(Indice_Agro,apoyo==1|proagro>=1|
+                               progan>=1|nvo_apoyo==1)
+Indice_Agro_Apoyo$apoyo_1<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_1),0,Indice_Agro_Apoyo$apoyo_1)
+Indice_Agro_Apoyo$apoyo_2<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_2),0,Indice_Agro_Apoyo$apoyo_2)
+Indice_Agro_Apoyo$apoyo_3<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_3),0,Indice_Agro_Apoyo$apoyo_3)
+Indice_Agro_Apoyo$apoyo_4<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_4),0,Indice_Agro_Apoyo$apoyo_4)
+Indice_Agro_Apoyo$apoyo_5<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_5),0,Indice_Agro_Apoyo$apoyo_5)
+Indice_Agro_Apoyo$apoyo_6<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_6),0,Indice_Agro_Apoyo$apoyo_6)
+Indice_Agro_Apoyo$apoyo_7<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_7),0,Indice_Agro_Apoyo$apoyo_7)
+Indice_Agro_Apoyo$apoyo_8<-ifelse(is.na(Indice_Agro_Apoyo$apoyo_8),0,Indice_Agro_Apoyo$apoyo_8)
+Indice_Agro_Apoyo$proagro<-ifelse(is.na(Indice_Agro_Apoyo$proagro),0,Indice_Agro_Apoyo$proagro)
+Indice_Agro_Apoyo$nvo_cant1<-ifelse(is.na(Indice_Agro_Apoyo$nvo_cant1),0,Indice_Agro_Apoyo$nvo_cant1)
+Indice_Agro_Apoyo$nvo_cant2<-ifelse(is.na(Indice_Agro_Apoyo$nvo_cant2),0,Indice_Agro_Apoyo$nvo_cant2)
+Indice_Agro_Apoyo$nvo_cant3<-ifelse(is.na(Indice_Agro_Apoyo$nvo_cant3),0,Indice_Agro_Apoyo$nvo_cant3)
+Indice_Agro_Apoyo$progan<-ifelse(is.na(Indice_Agro_Apoyo$progan),0,Indice_Agro_Apoyo$progan)
+Indice_Agro_Apoyo<-select(Indice_Agro_Apoyo,folioviv,apoyo_1,apoyo_2,
+                            apoyo_3,apoyo_4,apoyo_5,apoyo_6,apoyo_7,apoyo_8,
+                          nvo_cant1,nvo_cant2,nvo_cant3,proagro,progan)
+```
+
+```{r}
+n<-nrow(Indice_Agro_Apoyo)
+apoyo<-matrix(rep(0,n),ncol=1)
+for(i in 1:n){
+  apoyo[i]=sum(Indice_Agro_Apoyo[i,])-Indice_Agro_Apoyo$folioviv[i]
+  apoyo
+}
+Indice_Agro_Apoyo<-data.frame(Indice_Agro_Apoyo,apoyo)
+
+Indice_Agro_Act<-merge(Indice_Agro_Prod_Agregado,Indice_Agro_Apoyo, by="folioviv",all=T)
+
+Indice_Agro_Act$apoyo_1<-ifelse(is.na(Indice_Agro_Act$apoyo_1),0,Indice_Agro_Act$apoyo_1)
+Indice_Agro_Act$apoyo_2<-ifelse(is.na(Indice_Agro_Act$apoyo_2),0,Indice_Agro_Act$apoyo_2)
+Indice_Agro_Act$apoyo_3<-ifelse(is.na(Indice_Agro_Act$apoyo_3),0,Indice_Agro_Act$apoyo_3)
+Indice_Agro_Act$apoyo_4<-ifelse(is.na(Indice_Agro_Act$apoyo_4),0,Indice_Agro_Act$apoyo_4)
+Indice_Agro_Act$apoyo_5<-ifelse(is.na(Indice_Agro_Act$apoyo_5),0,Indice_Agro_Act$apoyo_5)
+Indice_Agro_Act$apoyo_6<-ifelse(is.na(Indice_Agro_Act$apoyo_6),0,Indice_Agro_Act$apoyo_6)
+Indice_Agro_Act$apoyo_7<-ifelse(is.na(Indice_Agro_Act$apoyo_7),0,Indice_Agro_Act$apoyo_7)
+Indice_Agro_Act$apoyo_8<-ifelse(is.na(Indice_Agro_Act$apoyo_8),0,Indice_Agro_Act$apoyo_8)
+Indice_Agro_Act$nvo_cant1<-ifelse(is.na(Indice_Agro_Act$nvo_cant1),0,Indice_Agro_Act$nvo_cant1)
+Indice_Agro_Act$nvo_cant2<-ifelse(is.na(Indice_Agro_Act$nvo_cant2),0,Indice_Agro_Act$nvo_cant2)
+Indice_Agro_Act$nvo_cant3<-ifelse(is.na(Indice_Agro_Act$nvo_cant3),0,Indice_Agro_Act$nvo_cant3)
+Indice_Agro_Act$proagro<-ifelse(is.na(Indice_Agro_Act$proagro),0,Indice_Agro_Act$proagro)
+Indice_Agro_Act$progan<-ifelse(is.na(Indice_Agro_Act$progan),0,Indice_Agro_Act$progan)
+Indice_Agro_Act$apoyo<-ifelse(is.na(Indice_Agro_Act$apoyo),0,Indice_Agro_Act$apoyo)
+
+Indice_Agro_Act<-select(Indice_Agro_Act,folioviv,valor,apoyo)
+```
+
+```{r}
+n<-nrow(Indice_Agro_Act)
+suma<-matrix(rep(0,n),ncol=1)
+for(i in 1:n){
+  suma[i]=Indice_Agro_Act$valor[i]+Indice_Agro_Act$apoyo[i]
+  suma
+}
+Indice_Agro_Act<-data.frame(Indice_Agro_Act,suma)
+
+Indice_Agro_Pas<-merge(Indice_Agro_Pas,Indice_Agro_Act, by="folioviv",all=F)
+```
+
+```{r}
+Indice_Agro_Pas$Numero_Int_Prom<-matrix(rep(3.8),nrow(Indice_Agro_Pas),ncol=1)
+Ingreso_Prom<-matrix(rep(0),nrow(Indice_Agro_Pas),ncol=1)
+for (i in 1:n){
+  Ingreso_Prom[i]=Indice_Agro_Pas$suma.y[i]/3.8
+  Ingreso_Prom
+}
+Indice_Agro_Pas$Ingreso_Prom<-Ingreso_Prom
+```
+Esta medida de pobreza calcula que aproximadamente el 63.43\% de los hogares viven por debajo de la linea de pobreza por ingreso que es el porcentaje de las familias que únicamente alcanzan a cubrir el 100\% de su consumo con sus ingresos.
+```{r}
+Indice_Agro_Pas$Coef<-Indice_Agro_Pas$suma.y/Indice_Agro_Pas$suma.x
+plot(x=1:nrow(Indice_Agro_Pas),y=sort(Indice_Agro_Pas$Coef),pch=20,cex=0.3,
+     main="Coeficiente de pobreza para actividades agrícolas, forestales y de tala",
+     ylab = "Coeficiente de pobreza",xlab="Clave por hogar")
+segments(x0=0,y0=1.1,x1=nrow(Indice_Agro_Pas),y1=1.1, col="red", cex=10)
+
+```
+```{r}
+sum(mean(Indice_Agro_Pas$Coef<=1.1))
+sum(Indice_Agro_Pas$Coef<=1.1)/nrow(Indice_Agro_Pas)
+```
+Linea de pobreza de CONEVAL $\$2,837.57$:
+```{r}
+Linea_Inf<-matrix(rep(2837.57,nrow(Indice_Agro_Pas)),ncol=1)
+Indice_Agro_Pas$Linea_Inf<-Linea_Inf
+```
+
+FGT's
+
+Estas medidas de pobreza toman en cuenta el valor de la cosecha para los integrantes de las familias rurales (autoconsumo):
+```{r}
+n<-nrow(Indice_Agro_Pas)
+FGT_i<-matrix(rep(0,nrow(Indice_Agro_Pas)),ncol=1)
+for (i in 1:n){
+  FGT_i[i]=(2837.57-Indice_Agro_Pas$Ingreso_Prom[i])/2837.57
+  FGT_i
+}
+Indice_Agro_Pas$FGT_i<-FGT_i
+```
+
+```{r FGT0}
+FGT0<-sum(Indice_Agro_Pas$Ingreso_Prom<2837.57)/n
+FGT0
+```
+
+```{r FGT1}
+suma <- c()
+for (i in 1:n){
+  if (Indice_Agro_Pas$FGT_i[i]>0){
+    suma <- c(suma, Indice_Agro_Pas$FGT_i[i])
+  }
+}
+total<-sum(suma)
+FGT1<-total/n
+FGT1
+```
+
+```{r FGT2}
+suma <- c()
+for (i in 1:n){
+  if (Indice_Agro_Pas$FGT_i[i]>0){
+    suma <- c(suma, (Indice_Agro_Pas$FGT_i[i])^2)
+  }
+}
+total<-sum(suma)
+FGT2<-total/n
+FGT2
+```
+**NO-AGRO**
+
+Ingresos:
+```{r}
+library(dplyr)
+Indice<-select(no_agro,folioviv)
+Indice_NoAgro_Ingresos<-semi_join(ingresos,Indice,by="folioviv")
+Indice_NoAgro_Ingresos_Agr<-aggregate(ing_tri ~ folioviv, data = Indice_NoAgro_Ingresos, sum)
+
+Indice_NoAgro_Ing_JCF<-semi_join(ingresos_jcf,Indice,by="folioviv")
+Indice_NoAgro_Ing_JCF_Agr<-aggregate(ing_tri ~ folioviv, data = Indice_NoAgro_Ing_JCF, sum)
+
+Ingreso_Agregado<-merge(Indice_NoAgro_Ingresos_Agr,Indice_NoAgro_Ing_JCF_Agr, by="folioviv",all=T)
+Ingreso_Agregado$ing_tri.y<-ifelse(is.na(Ingreso_Agregado$ing_tri.y),0,Ingreso_Agregado$ing_tri.y)
+Ingreso_Agregado$Ing_Tri<-Ingreso_Agregado$ing_tri.x+Ingreso_Agregado$ing_tri.y
+
+Ingreso_Agregado$Numero_Int_Prom<-matrix(rep(3.5,nrow(Ingreso_Agregado)),ncol=1)
+Ingreso_Agregado$Ingreso_Tri_Prom<- Ingreso_Agregado$Ing_Tri/3.5
+```
+Gastos:
+```{r}
+Indice_NoAgro_Gastos<-semi_join(gastos_hogar,Indice, by="folioviv")
+Indice_NoAgro_Gastos_Agr<-aggregate(gasto_tri ~ folioviv, data = Indice_NoAgro_Gastos, sum)
+
+Indice_NoAgro_Gas_Tar<-semi_join(gastos_tarj, Indice, by="folioviv")
+Indice_NoAgro_Gas_Tar_Agr<-aggregate(gasto_tri ~ folioviv, data = Indice_NoAgro_Gas_Tar, sum)
+
+Indice_NoAgro_Gas_Per<-semi_join(gastos_per,Indice, by="folioviv")
+Indice_NoAgro_Gas_Per_Agr<-aggregate(gasto_tri ~ folioviv, data = Indice_NoAgro_Gas_Per, sum)
+
+Indice_Gasto<-merge(Indice_NoAgro_Gastos_Agr,Indice_NoAgro_Gas_Tar_Agr,by="folioviv", all=T)
+Indice_Gasto<-merge(Indice_Gasto, Indice_NoAgro_Gas_Per_Agr, by="folioviv", all=T)
+Indice_Gasto$gasto_tri.x<-ifelse(is.na(Indice_Gasto$gasto_tri.x),0,Indice_Gasto$gasto_tri.x)
+Indice_Gasto$gasto_tri.y<-ifelse(is.na(Indice_Gasto$gasto_tri.y),0,Indice_Gasto$gasto_tri.y)
+Indice_Gasto$gasto_tri<-ifelse(is.na(Indice_Gasto$gasto_tri),0,Indice_Gasto$gasto_tri)
+Indice_Gasto$Gasto_tri_tot<-Indice_Gasto$gasto_tri.x+Indice_Gasto$gasto_tri.y+Indice_Gasto$gasto_tri
+```
+Indices Agregados:
+```{r}
+Indice_NoAgro_Agregado<-merge(Ingreso_Agregado,Indice_Gasto,by="folioviv")
+```
+Coeficiente de Pobreza:
+```{r}
+Indice_NoAgro_Agregado$Coef<-Indice_NoAgro_Agregado$Ing_Tri/Indice_NoAgro_Agregado$Gasto_tri_tot
+```
+Gáfico:
+```{r}
+plot(x=1:nrow(Indice_NoAgro_Agregado),y=sort(Indice_NoAgro_Agregado$Coef),pch=20,cex=0.3,
+     main="Coeficiente de pobreza para actividades industriales, comerciales y de servicios", cex.main=1,
+     ylab = "Coeficiente de pobreza",xlab="Clave por hogar")
+segments(x0=0,y0=1.2,x1=nrow(Indice_NoAgro_Agregado),y1=1.2, col="red", cex=10)
+```
+
+```{r}
+COEF<-mean(Indice_NoAgro_Agregado$Coef<1.1)
+COEF
+```
+Linea de Pobreza CONEVAL $\$3,997.24$
+```{r}
+n<-nrow(Indice_NoAgro_Agregado)
+FGT_i<-matrix(rep(0,nrow(Indice_NoAgro_Agregado)),ncol=1)
+for (i in 1:n){
+  FGT_i[i]=(3997.24-Indice_NoAgro_Agregado$Ingreso_Tri_Prom[i])/3997.24
+  FGT_i
+}
+Indice_NoAgro_Agregado$FGT_i<-FGT_i
+```
+
+```{r}
+FGT0<-sum(Indice_NoAgro_Agregado$Ingreso_Tri_Prom<3997.24)/n
+FGT0
+```
+```{r}
+suma <- c()
+for (i in 1:n){
+  if (Indice_NoAgro_Agregado$FGT_i[i]>0){
+    suma <- c(suma, Indice_NoAgro_Agregado$FGT_i[i])
+  }
+}
+total<-sum(suma)
+FGT1<-total/n
+FGT1
+```
+```{r}
+suma <- c()
+for (i in 1:n){
+  if (Indice_NoAgro_Agregado$FGT_i[i]>0){
+    suma <- c(suma, (Indice_NoAgro_Agregado$FGT_i[i])^2)
+  }
+}
+total<-sum(suma)
+FGT2<-total/n
+FGT2
+```
+
+```{r}
+FGT0_Agr<-0.295426*(1-0.7692)+FGT0*0.7692
+FGT1_Agr<-0.1562398*(1-0.7692)+FGT1*0.7692
+FGT2_Agr<-0.1053634*(1-0.7692)+FGT2*0.7692
+```
+```{r}
+library(dplyr)
+poverty_fgt <- function(x, z, w = NULL, alpha = 0){
+        if(is.null(w)){
+                w = rep(1, length(x))
+        }
+        
+        if(length(z) == 1){
+                z = rep(z, length(x))
+        }
+        
+        data <- tibble(x,w,z) %>% filter(complete.cases(.))
+        
+        rm(x, w, z)
+        
+        data <- data %>%
+                mutate(g   = ifelse(x < z, ((z - x)/z), 0),
+                       fgt = ifelse(x < z, g^alpha, 0)) %>%
+                summarise(fgt = sum(w*fgt),
+                          n   = sum(w))
+        
+        data$fgt/data$n
+}
+poverty_fgt(unlist(Indice_NoAgro_Agregado$Ingreso_Tri_Prom),3997.24,w=NULL,alpha=0)
+FGT0_Agr
+FGT1_Agr
+FGT2_Agr
+```
+
+
+
+
+
