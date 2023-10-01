@@ -1,0 +1,66 @@
+---
+title: "Pobreza por Estados"
+output: html_notebook
+---
+Creación de Base de Datos
+```{r}
+Nombre_Estado<-matrix(c("Aguascalientes","Baja California", "Baja California Sur", "Campeche",
+                        "Chiapas","Chihuahua","Coahuila de Zaragoza", "Colima", "Distrito Federal", 
+                        "Durango", "Guanajuato", "Guerrero", "Hidalgo", "Jalisco",
+                        "México","Michoacán","Morelos", "Nayarit", "Nuevo León",
+                        "Oaxaca", "Puebla", "Querétaro de Arteaga", "Quintana Roo",
+                        "San Luis Potosí", "Sinaloa", "Sonora", "Tabasco", "Tamaulipas", 
+                        "Tlaxcala","Veracruz de Ignacio de la Llave", "Yucatán","Zacatecas"),ncol=1)
+Clave_Estado<-matrix(1:nrow(Nombre_Estado),ncol=1)
+ISG_Agro<-matrix(rep(0.5797309,nrow(Nombre_Estado)),ncol=1)
+ISG_NoAgro<-matrix(rep(0.3538725,nrow(Nombre_Estado)),ncol=1)
+Pob_Agro<-matrix(c(0.171437297,0.073082511,0.135354444,0.235687869,0.455839936,
+                   0.151538566,0.095519534,0.106611503,0.003957267,0.295223863,
+                   0.290231037,0.398007112,0.462174548,0.130611846,0.114190167,
+                   0.305250899,0.155893757,0.309403549,0.052784681,0.517866352,
+                   0.268259095,0.272750103,0.102981990,0.347363291,0.264353932,
+                   0.135255385,0.414790031,0.116908945,0.208936359,0.370052252,
+                   0.14868932,0.397911937),ncol=1)
+Pob_NoAgro<-matrix(rep(1,nrow(Pob_Agro)),ncol=1)
+Pob_NoAgro<-Pob_NoAgro-Pob_Agro
+ISG_Agro_Est<-ISG_Agro*Pob_Agro
+ISG_NoAgro_Est<-ISG_NoAgro*Pob_NoAgro
+ISG_Tot<-ISG_Agro_Est+ISG_NoAgro_Est
+Estado<-data.frame(Nombre_Estado,Clave_Estado,ISG_Agro,ISG_NoAgro,Pob_Agro,
+                   Pob_NoAgro,ISG_Agro_Est,ISG_NoAgro_Est,ISG_Tot)
+View(Estado)
+```
+
+Mapa:
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(raster)
+library(sf)
+Mex_ISG<-data_frame(Estado$Clave_Estado,Estado$ISG_Tot)
+colnames(Mex_ISG) <- c("Clave_Estado", "ISG_Tot")
+#Mex_Mapa<-st_read("México_Estados.shx")
+```
+```{r}
+dfMex<-getData("GADM",country="MEX",level=1)%>%
+  st_as_sf()
+dfMex$Clave_Estado<-matrix(1:32,ncol=1)
+Estados<- merge(dfMex,Mex_ISG, by="Clave_Estado")
+head(Estados,15)
+ggplot(Estados) +
+  geom_sf(aes(fill = ISG_Tot))+
+  labs(title = "Porcentaje de población en situación de pobreza por ingreso",subtitle = "A nivel estatal",
+       caption = "Fuente: ENIGH (2022)",
+        x="Longitud",
+       y="Latitud")+
+  scale_fill_continuous(guide_legend(title = "ISG"))
+```
+
+
+
+
+
+
+
+
